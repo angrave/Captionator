@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MARS WebVTT Multi‑Track Comparator</title>
+  <title>MARS Captionator - WebVTT/SRT Multi‑caption Comparator</title>
   <style>
     :root{
       --bg:#0b0f14; --panel:#121821; --muted:#9fb0c3; --text:#e6edf3; --accent:#4da3ff; --accent-2:#9bdbff; --warning:#f6c549; --active:#2a3b52; --border:#1f2a38;
@@ -19,11 +19,11 @@
     input[type="file"]{cursor:pointer}
     input[type="text"], input[type="number"]{cursor:text}
     button:hover, .btn:hover{border-color:#2b3a4e}
-    main{display:grid;grid-template-columns:minmax(380px,1.1fr) 1fr;gap:0;height:calc(100% - 58px)}
+    main{display:grid;grid-template-columns:minmax(380px,1.1fr) 1.5fr;gap:0;height:calc(100% - 58px)}
     @media (max-width: 1100px){main{grid-template-columns:1fr;grid-auto-rows:auto}}
 
     /* Left: video */
-    .left{border-right:1px solid var(--border);padding:1rem;display:flex;flex-direction:column;gap:.75rem}
+    .left{border-right:1px solid var(--border);padding:1rem;display:flex;flex-direction:column;gap:.75rem;}
     .dropzone{flex:1;display:grid;place-items:center;border:2px dashed var(--border);border-radius:1rem;background:radial-gradient(1200px 400px at 10% 10%, #101826, #0b0f14);min-height:200px}
     .dropzone.drag{border-color:var(--accent)}
     video{max-width:100%;max-height:calc(100vh - 220px);border-radius:1rem;box-shadow:0 10px 30px rgba(0,0,0,.4);background:#000}
@@ -36,6 +36,7 @@
 
     .track{background:var(--panel);border:1px solid var(--border);border-radius:1rem;overflow:hidden}
     .track header{display:flex;align-items:center;gap:.5rem;padding:.6rem .8rem;border:none;background:linear-gradient(180deg,#111a26,#0f1620)}
+    .track header {position: sticky;  top: 0;  z-index: 2;}
     .track header .meta{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap}
     .pill{font-size:.75rem;color:var(--muted);border:1px dashed var(--border);border-radius:999px;padding:.1rem .5rem}
     .grow{flex:1}
@@ -53,10 +54,16 @@
     .cue .text{white-space:pre-wrap}
     .cue .settings{font-family:ui-monospace,SFMono-Regular,Consolas,Monaco,monospace;font-size:.78rem;color:#b6c3d4;opacity:.9}
     .cue.active{background:linear-gradient(90deg, rgba(77,163,255,.15), transparent 70%); outline:1px solid rgba(77,163,255,.4)}
-    .cue.active .timing{color:var(--accent)}
+    .cue.active .timing .warn{color:var(--accent)}
     .cue .id{color:#93b5ff}
     .cue .voice{color:var(--warning);font-weight:600}
     .cue .note{color:#c5b38a}
+    .toggle { font-size: 0.9rem; display: flex;      align-items: center;      gap: 0.4rem;      cursor: pointer; }
+    .warnings {  margin-top: .2rem; display: flex; flex-wrap: wrap; gap: .25rem; }
+    .hidden-warnings .warnings{
+      display: none;
+    }
+    .warn { font-size: .85rem; cursor: help; color: var(--warning); user-select: none; }
 
     .toolbar{display:flex;gap:.5rem;align-items:center}
     .toolbar label{display:flex;gap:.4rem;align-items:center}
@@ -67,34 +74,35 @@
 </head>
 <body>
   <header>
-    <div class="title">MARS WebVTT Multi‑Track Comparator</div>
+    <div class="title">MARS WebVTT/SRT Multi‑Track Comparator</div>
     <div class="controls">
-      <label class="btn" for="videoFile">➕ Load MP4</label>
-      <input id="videoFile" type="file" accept="video/mp4,video/*" hidden>
-      <label class="btn" for="vttFiles">➕ Load VTT (multi)</label>
-      <input id="vttFiles" type="file" accept=".vtt,text/vtt" multiple hidden>
+      <label class="btn" for="videoFile">➕ Open Audio/Video (e.g., MP4)</label>
+      <input id="videoFile" type="file" accept="video/mp4,video/*,audio/*" hidden>
+      <label class="btn" for="vttFiles">➕ Open VTT/SRT (multi)</label>
+      <input id="vttFiles" type="file" accept=".vtt,text/vtt,.VTT,.srt,application/x-subrip" multiple hidden>
     </div>
   </header>
   <main>
     <section class="left">
       <div class="dropzone" id="videoDrop">
         <div>
-          <div class="hint">Drop an MP4 here or click “Load MP4”.</div>
+          <div class="hint">Drop an MP4 or audio file here or click “Open Audio/Video”.</div>
         </div>
       </div>
       <video id="player" controls crossorigin="anonymous"></video>
-      <div class="hint">Tip: you can drag & drop more VTT files onto the right column.</div>
+      <div class="hint">Tip: You can drag & drop more VTT &amp; SRT files onto the right column.</div>
     </section>
 
     <section class="right">
       <div class="right-header toolbar">
+        <label class="toggle"> <input type="checkbox" id="toggleWarnings" checked>Show warnings</label>
         <label><input type="checkbox" id="autoScroll" checked> Auto‑scroll to active cue</label>
         <label><input type="checkbox" id="showNotes" checked> Keep NOTE blocks</label>
         <label><input type="checkbox" id="showStyles" checked> Keep STYLE/REGION blocks</label>
         <span class="small">Click a cue to seek to its start.</span>
       </div>
       <div id="tracks" aria-live="polite" aria-relevant="additions"></div>
-      <div class="footer">Fully client‑side. No uploads. Parses NOTE, STYLE, REGION and cue settings; highlights and syncs active cue(s) during playback and on seek.</div>
+      <div class="footer" id="footer">Copyright 2025 Lawrence Angrave</div>
     </section>
   </main>
 
@@ -110,6 +118,16 @@
   const showNotesEl = $('#showNotes');
   const showStylesEl = $('#showStyles');
   const videoDrop = $('#videoDrop');
+  const footer = $('#footer');
+  const toggleWarnings = $("#toggleWarnings");
+  toggleWarnings.addEventListener("change", e => {
+    if (e.target.checked) {
+      document.body.classList.remove("hidden-warnings");
+    } else {
+      document.body.classList.add("hidden-warnings");
+    }
+  });
+  
 
   let rafToken = null;
   const trackState = new Map(); // id -> state
@@ -121,27 +139,28 @@
     loadVideoFile(f);
     e.target.value = '';
   });
-  vttFiles.addEventListener('change', e => { handleVttFiles(e.target.files); e.target.value=''; });
+  vttFiles.addEventListener('change', e => { handleCaptionFiles(e.target.files); e.target.value=''; });
 
   // Drag and drop for video (left) and VTTs (right)
   function wireDrop(zone, onFiles){
     ['dragenter','dragover'].forEach(evt=>zone.addEventListener(evt, e=>{ e.preventDefault(); zone.classList.add('drag'); }));
     ['dragleave','drop'].forEach(evt=>zone.addEventListener(evt, e=>{ e.preventDefault(); if(evt==='drop'){ const dt=e.dataTransfer; onFiles(dt.files); } zone.classList.remove('drag'); }));
   }
-  wireDrop(videoDrop, files=>{ const f=[...files].find(f=>f.type.startsWith('video/')); if(f) loadVideoFile(f); });
-  wireDrop(document.body, files=>{ const list=[...files].filter(f=>/\.vtt$/i.test(f.name) || f.type==='text/vtt'); if(list.length) handleVttFiles(list); });
+  wireDrop(videoDrop, files=>{ const f=[...files].find(f=>f.type.startsWith('video/') || f.type.startsWith('audio/') ); if(f) loadVideoFile(f); });
+  wireDrop(document.body, files=>{ const list = [...files].filter(f =>  /\.vtt$/i.test(f.name) ||  /\.srt$/i.test(f.name) ||   f.type === 'text/vtt' ||   f.type === 'application/x-subrip'
+); if(list.length) handleCaptionFiles(list); });
 
   function loadVideoFile(file){
     const url = URL.createObjectURL(file);
     player.src = url;
     player.play().catch(()=>{});
   }
-  function handleVttFiles(fileList){
+  function handleCaptionFiles(fileList){
     [...fileList].forEach(async file=>{
       const text = await file.text();
-      const parsed = parseVTT(text);
+      const parsed = parseCaption(text);
       const id = `t${++trackSeq}`;
-      const state = { id, name:file.name, parsed, pointer:0, activeSet:new Set(), offset:0, autoscroll:true };
+      const state = { id, name:file.name, parsed, pointer:0, activeSet:new Set(), autoscroll:true };
       trackState.set(id, state);
       renderTrack(state);
       scheduleUpdate();
@@ -149,7 +168,7 @@
   }
 
   // —— VTT Parsing (NOT a full spec implementation, but robust and covers NOTE/STYLE/REGION/cue settings) ——
-  function parseVTT(source){
+  function parseCaption(source){
     const raw = source.replace(/\r\n?/g,'\n');
     const lines = raw.split('\n');
     if(lines[0] && lines[0].charCodeAt(0) === 0xFEFF) lines[0] = lines[0].slice(1); // strip BOM
@@ -194,10 +213,10 @@
         continue;
       }
 
-      // Cue block
+      // Cue block  match timestamps 00:01:23,456 (SRT) or  00:01:23.456 (VTT)
       let id=null; let timeLine=line;
       if(line.indexOf('-->') === -1){ id = line.trim(); i++; timeLine = lines[i] || ''; }
-      const m = /^(\d{1,2}:)?\d{2}:\d{2}\.\d{3}\s+-->\s+(\d{1,2}:)?\d{2}:\d{2}\.\d{3}(?:\s+(.+))?$/.exec(timeLine.trim());
+      const m = /^(\d{1,2}:)?\d{2}:\d{2}[.,]\d{3}\s+-->\s+(\d{1,2}:)?\d{2}:\d{2}[.,]\d{3}(?:\s+(.+))?$/.exec(timeLine.trim());
       if(!m){ // not a cue, skip until blank
         while(i<lines.length && lines[i].trim() !== '') i++;
         continue;
@@ -212,19 +231,139 @@
       const textLines=[]; while(i<lines.length && lines[i].trim() !== '') textLines.push(lines[i++]);
       cues.push({ id, start, end, settings, rawText: textLines.join('\n') });
     }
-
+    checkCaptions(cues);
     return { header, styles, notes, regions, cues };
   }
 
+  function checkCaptions(cueList) {
+    const MIN_DURATION = 2.0;   // seconds
+    const MAX_DURATION = 6.0;
+    const MAX_LINES = 2;
+    const MAX_CHARS_PER_LINE = 32;
+    const MAX_SILENCE = 3.0;    // seconds
+    const MAX_READING_SPEED = 20; // chars per second
+
+    // Minimal HTML entity decoder
+    const entities = {
+      amp: "&", lt: "<", gt: ">", quot: '"', apos: "'",
+      nbsp: " ", ndash: "–", mdash: "—", hellip: "…"
+    };
+    function decodeEntities(str) {
+      return str.replace(/&(#x?[0-9a-f]+|\w+);/gi, (m, code) => {
+        if (code[0] === '#') {
+          // numeric entity
+          let n;
+          if (code[1] === 'x' || code[1] === 'X') {
+            n = parseInt(code.slice(2), 16);
+          } else {
+            n = parseInt(code.slice(1), 10);
+          }
+          if (!isNaN(n)) return String.fromCodePoint(n);
+        } else if (entities.hasOwnProperty(code)) {
+          return entities[code];
+        }
+        // unknown entity -> treat as one char
+        return "�";
+      });
+    }
+
+    // Sort cues by start time
+    cueList.sort((a, b) => a.start - b.start);
+
+    for (let i = 0; i < cueList.length; i++) {
+      const cue = cueList[i];
+      cue.warnings = [];
+
+      const dur = cue.end - cue.start;
+      const lines = cue.rawText.split(/\r?\n/);
+
+      // --- Duration Checks ---
+      if (dur < 0) {
+        cue.warnings.push({'err':'mindur', 'explain':`Duration is negative (end time is before start time).`});
+      } else 
+      if (cue.start === cue.end) {
+        cue.warnings.push({'err':'mindur', 'explain':`Start time is the same as the end time.`});
+      } else 
+      if (dur < MIN_DURATION) {
+        cue.warnings.push({'err':'mindur', 'explain':`Duration too short (${dur.toFixed(2)}s, min ${MIN_DURATION}s).`});
+      }
+      
+      if (dur > MAX_DURATION) {
+        cue.warnings.push({'err':'maxdur', 'explain':`Duration too long (${dur.toFixed(2)}s, max ${MAX_DURATION}s).`});
+      }
+
+      // --- Line count ---
+      if (lines.length > MAX_LINES) {
+        cue.warnings.push({'err':'linecount', 'explain':`Too many lines (${lines.length}, max ${MAX_LINES}).`});
+      }
+
+      // --- Line length + trailing spaces ---
+      lines.forEach((line, idx) => {
+        const decoded = decodeEntities(line);
+        if (decoded.length > MAX_CHARS_PER_LINE) {
+          cue.warnings.push({'err':'maxlinelen', 'explain': `Line ${idx+1} too long (${decoded.length} chars, max ${MAX_CHARS_PER_LINE}).`});
+        }
+        if (/\s$/.test(line)) {
+          cue.warnings.push({'err':'trailspace','explain':`Line ${idx+1} has trailing spaces.`});
+        }
+      });
+
+      // --- Reading speed ---
+      const decodedText = decodeEntities(lines.join(" "));
+      const cps = decodedText.length / dur;
+      if (cps > MAX_READING_SPEED) {
+        cue.warnings.push({'err':'readfast','explain':`Reading speed too high (${cps.toFixed(1)} cps, max ${MAX_READING_SPEED}).`});
+      }
+
+      // --- Overlaps ---
+      if (i > 0 && cue.start < cueList[i-1].end) {
+        cue.warnings.push({'err':'overlap','explain':`Overlaps with previous cue (starts at ${cue.start.toFixed(2)}s, previous ends at ${cueList[i-1].end.toFixed(2)}s).`});
+      }
+
+      // --- Silence gap ---
+      if (i > 0) {
+        const gap = cue.start - cueList[i-1].end;
+        if (gap > MAX_SILENCE) {
+          cue.warnings.push({'err':'gap','explain':`Long silence gap before cue (${gap.toFixed(2)}s, max ${MAX_SILENCE}s).`});
+        }
+      }
+
+      // --- Empty text ---
+      if (!cue.rawText.trim()) {
+        cue.warnings.push({'err':'empty','explain':"Empty cue text."});
+      }
+
+      // --- Punctuation check ---
+      const trimmed = decodedText.trim();
+      if (trimmed.length > 0 && /^[A-Za-z0-9]/.test(trimmed)) {
+        if (!/[.?!…]$/.test(trimmed)) {
+          cue.warnings.push({'err':'endpunct','explain':"Cue does not end with proper punctuation."});
+        }
+      }
+    }
+
+    return cueList;
+  }
+  
+
   function parseTimestamp(ts){
-    // Accept MM:SS.mmm or HH:MM:SS.mmm (WebVTT uses dot for fractional)
-    const parts = ts.trim().split(':');
+    ts = ts.trim().replace(',', '.'); // normalize SRT commas to dot
+    const parts = ts.split(':');
     let h=0, m=0, s=0;
-    if(parts.length === 3){ h = parseInt(parts[0],10); m = parseInt(parts[1],10); s = parseFloat(parts[2]); }
-    else if(parts.length === 2){ m = parseInt(parts[0],10); s = parseFloat(parts[1]); }
+    // Accept MM:SS.mmm or HH:MM:SS.mmm
+    if(parts.length === 3){
+      h = parseInt(parts[0],10); 
+      m = parseInt(parts[1],10); 
+      s = parseFloat(parts[2]);
+    }
+    else if(parts.length === 2){
+      m = parseInt(parts[0],10); 
+      s = parseFloat(parts[1]);
+    }
     else { return 0; }
     return h*3600 + m*60 + s;
-  }
+  }  
+  
   function parseSettings(str){
     const obj={};
     if(!str) return obj;
@@ -235,6 +374,31 @@
   }
 
   // —— Rendering ——
+  const warningIcons = {
+    mindur: "⏱️",    // duration too short (or start=end or end before start)
+    maxdur: "🕰️",    // too long
+    linecount: "📏",  // too many lines
+    maxlinelen: "➡️", // line too long
+    trailspace: "␣",  // trailing space
+    readfast: "⚡",   // fast reading speed
+    overlap: "🔗",    // overlap
+    gap: "…",        // long gap between captions
+    empty: "∅",      // empty
+    endpunct: "❗"    // missing punctuation
+  };
+  
+  function updateFooter(cue) {
+      let footer_text = "No warnings"
+      if (cue.warnings.length) {
+        footer_text = ""
+        cue.warnings.forEach(w => {
+          footer_text += (footer_text.length ? ' ' : '') + (warningIcons[w.err] || "⚠️") + '&nbsp';
+          footer_text += w.explain;    
+        });
+        
+      }
+      footer.innerHTML=footer_text;
+  }
   function renderTrack(state){
     const { id, name, parsed } = state;
     const el = document.createElement('section');
@@ -244,12 +408,11 @@
     const h = document.createElement('header');
     const title = document.createElement('div');
     title.className='meta';
-    title.innerHTML = `<span class="pill">VTT</span> <strong>${escapeHtml(name)}</strong> <span class="small">${parsed.cues.length} cues</span>`;
+    title.innerHTML = `<strong>${escapeHtml(name)}</strong> <span class="small">${parsed.cues.length} cues</span>`;
 
     const grow = document.createElement('div'); grow.className='grow';
     const tools = document.createElement('div'); tools.className='toolbar';
     tools.innerHTML = `
-      <label>Offset (s) <input type="number" step="0.1" value="0" class="offset"></label>
       <label><input type="checkbox" class="autoscroll" checked> Auto‑scroll</label>
       <button class="btn scrollTop" title="Scroll to top">⤒</button>
     `;
@@ -280,7 +443,7 @@
     parsed.cues.forEach((cue, idx)=>{
       const cueEl = document.createElement('div'); cueEl.className='cue'; cueEl.tabIndex=0;
       cueEl.dataset.start = cue.start; cueEl.dataset.end = cue.end; cueEl.dataset.index = idx;
-      cueEl.addEventListener('click', ()=>{ player.currentTime = cue.start; player.pause(); scheduleUpdate(true); });
+      cueEl.addEventListener('click', ()=>{ updateFooter(cue); player.currentTime = cue.start; player.pause(); scheduleUpdate(true); });
 
       const timing = document.createElement('div'); timing.className='timing';
       const idEl = document.createElement('div'); idEl.className='id small';
@@ -295,7 +458,18 @@
       const s = cue.settings; const keys = Object.keys(s);
       settings.textContent = keys.length ? keys.map(k=>`${k}:${s[k]}`).join(' ') : '';
       wrap.append(text, settings);
-
+      if (cue.warnings.length) {
+        const warnBox = document.createElement("div");
+        warnBox.className = "warnings";
+        cue.warnings.forEach(w => {
+          const icon = document.createElement("span");
+          icon.className = "warn";
+          icon.textContent = warningIcons[w.err] || "⚠️";
+          icon.title = w.explain; // hover shows full explanation
+          warnBox.appendChild(icon);
+        });
+        wrap.appendChild(warnBox);
+      }
       cueEl.append(timing, wrap);
       cuesEl.appendChild(cueEl);
     });
@@ -304,8 +478,6 @@
     tracksEl.prepend(el);
 
     // wire toolbar
-    const offsetInput = $('.offset', el);
-    offsetInput.addEventListener('input', ()=>{ state.offset = parseFloat(offsetInput.value||'0') || 0; scheduleUpdate(); });
     $('.autoscroll', el).addEventListener('change', (e)=>{ state.autoscroll = e.target.checked; });
     $('.scrollTop', el).addEventListener('click', ()=>{ cuesEl.scrollTo({top:0, behavior:'smooth'}); });
 
@@ -345,7 +517,7 @@
   function doUpdate(){
     const tVideo = player.currentTime || 0;
     trackState.forEach(state => {
-      const t = tVideo + (state.offset||0);
+      const t = tVideo;
       const active = indicesAtTime(state, t);
       const activeSet = new Set(active);
       // Update DOM classes
